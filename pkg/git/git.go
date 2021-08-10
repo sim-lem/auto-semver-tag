@@ -3,9 +3,9 @@ package git
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -33,7 +33,7 @@ type GitClient struct {
 	client *github.Client
 }
 
-func New(token string, repository string, releaseBranch string) *GitClient {
+func New(token string, repository string, releaseBranch string) (*GitClient, error) {
 	ctx := context.Background()
 
 	tokenSource := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token})
@@ -43,7 +43,10 @@ func New(token string, repository string, releaseBranch string) *GitClient {
 	owner := parts[0]
 	repoName := parts[1]
 
-	version := getLatestTag(client, owner, repoName)
+	version, err := getLatestTag(client, owner, repoName)
+	if err != nil {
+		return nil, err
+	}
 
 	repo := GitRepository{
 		repoName,
@@ -56,26 +59,29 @@ func New(token string, repository string, releaseBranch string) *GitClient {
 		token,
 		repo,
 		client,
-	}
+	}, nil
 }
 
-func (gitClient *GitClient) PerformAction(commitSha string, eventDataFilePath string) {
-	event := parseEventDataFile(eventDataFilePath)
+func (gitClient *GitClient) PerformAction(commitSha string, eventDataFilePath string) error {
+	event, err := parseEventDataFile(eventDataFilePath)
+	if err != nil {
+		return err
+	}
 
 	if event.Action == nil || *event.Action != "closed" {
-		log.Fatal("pull request is not closed")
+		return errors.New("pull request is not closed")
 	}
 
 	if event.PullRequest.Merged == nil || !*event.PullRequest.Merged {
-		log.Fatal("pull request is not merged")
+		return errors.New("pull request is not merged")
 	}
 
 	if event.PullRequest.Base == nil || event.PullRequest.Base.Ref == nil {
-		log.Fatal("could not determine pull request base branch")
+		return errors.New("could not determine pull request base branch")
 	}
 
 	if *event.PullRequest.Base.Ref != gitClient.repo.releaseBranch {
-		log.Fatal("pull request is merged not into the release branch")
+		return errors.New("pull request is merged not into the release branch")
 	}
 
 	hasMajor, hasMinor := parsePullRequestLabels(event.PullRequest)
@@ -90,13 +96,15 @@ func (gitClient *GitClient) PerformAction(commitSha string, eventDataFilePath st
 	}
 
 	if !newVersion.IsGreaterThan(semver.SemVer{}) {
-		log.Fatal("new version is 0.0.0")
+		return errors.New("new version is 0.0.0")
 	}
 
-	err := gitClient.createTag(newVersion.String(), commitSha)
+	err = gitClient.createTag(newVersion.String(), commitSha)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
+
+	return nil
 }
 
 func (gitClient *GitClient) createTag(version string, commitSha string) error {
@@ -134,32 +142,32 @@ func parsePullRequestLabels(pr *github.PullRequest) (hasMajor bool, hasMinor boo
 	return
 }
 
-func parseEventDataFile(filePath string) *github.PullRequestEvent {
+func parseEventDataFile(filePath string) (*github.PullRequestEvent, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
-		log.Fatalf("%s. Filepath: %s", err, filePath)
+		return nil, fmt.Errorf("%s. Filepath: %s", err, filePath)
 	}
 	defer file.Close()
 
 	event, err := ioutil.ReadAll(file)
 	if err != nil {
-		log.Fatalf("%s. Filepath: %s", err, filePath)
+		return nil, fmt.Errorf("%s. Filepath: %s", err, filePath)
 	}
 
 	eventData, err := github.ParseWebHook("pull_request", stripOrg(event))
 	if err != nil {
-		log.Fatalf("%s. Filepath: %s", err, filePath)
+		return nil, fmt.Errorf("%s. Filepath: %s", err, filePath)
 	}
 
 	res, ok := eventData.(*github.PullRequestEvent)
 	if !ok {
-		log.Fatal("could not parse GitHub event into a PullRequestEvent")
+		return nil, errors.New("could not parse GitHub event into a PullRequestEvent")
 	}
 
-	return res
+	return res, nil
 }
 
-func getLatestTag(client *github.Client, owner string, repo string) semver.SemVer {
+func getLatestTag(client *github.Client, owner string, repo string) (semver.SemVer, error) {
 	res := semver.SemVer{}
 	ctx := context.Background()
 
@@ -167,11 +175,11 @@ func getLatestTag(client *github.Client, owner string, repo string) semver.SemVe
 		Ref: "tags",
 	})
 	if err != nil {
-		log.Fatal(err)
+		return res, err
 	}
 
 	if response != nil && response.StatusCode == http.StatusNotFound {
-		return res
+		return res, nil
 	}
 
 	for _, ref := range refs {
@@ -185,7 +193,7 @@ func getLatestTag(client *github.Client, owner string, repo string) semver.SemVe
 		}
 	}
 
-	return res
+	return res, nil
 }
 
 func stripOrg(byteString []byte) []byte {
