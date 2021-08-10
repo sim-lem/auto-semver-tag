@@ -1,6 +1,6 @@
 # Auto semver tag
 
-Action creates semver tag *(vX.Y.Z)* when pull request is merged. New version is calculated based on PR labels: "major", "minor". Patch version is incremented by default.
+Action creates semver tag *(vX.Y.Z)* when pull request is merged. New version is calculated based on presence of PR labels: "major", "minor". Otherwise patch version is incremented.
 
 ## Enviroment
 
@@ -34,4 +34,3 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
-
