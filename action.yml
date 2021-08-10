@@ -1,0 +1,12 @@
+name: 'Auto semver tag'
+description: 'Automatically set semver tag to commit'
+inputs:
+  release_branch:
+    description: 'Branch to tag'
+    required: true
+    default: master
+runs:
+  using: 'docker'
+  image: 'Dockerfile'
+  args:
+    - ${{ inputs.release_branch }}
