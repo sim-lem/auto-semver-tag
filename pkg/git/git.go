@@ -18,6 +18,7 @@ import (
 const (
 	IncrementTypeMajorLabel = "major"
 	IncrementTypeMinorLabel = "minor"
+	IncrementTypePatchLabel = "patch"
 )
 
 type GitRepository struct {
@@ -84,15 +85,17 @@ func (gitClient *GitClient) PerformAction(commitSha string, eventDataFilePath st
 		return errors.New("pull request is merged not into the release branch")
 	}
 
-	hasMajor, hasMinor := parsePullRequestLabels(event.PullRequest)
+	hasMajor, hasMinor, hasPatch := parsePullRequestLabels(event.PullRequest)
 
 	var newVersion semver.SemVer
 	if hasMajor {
 		newVersion = gitClient.repo.version.IncrementVersion(semver.IncrementTypeMajor)
 	} else if hasMinor {
 		newVersion = gitClient.repo.version.IncrementVersion(semver.IncrementTypeMinor)
-	} else {
+	} else if hasPatch {
 		newVersion = gitClient.repo.version.IncrementVersion(semver.IncrementTypePatch)
+	} else {
+		return nil
 	}
 
 	if !newVersion.IsGreaterThan(semver.SemVer{}) {
@@ -121,19 +124,20 @@ func (gitClient *GitClient) createTag(version string, commitSha string) error {
 	return err
 }
 
-func parsePullRequestLabels(pr *github.PullRequest) (hasMajor bool, hasMinor bool) {
+func parsePullRequestLabels(pr *github.PullRequest) (hasMajor bool, hasMinor bool, hasPatch bool) {
 	for _, label := range pr.Labels {
 		if label.Name == nil {
 			continue
 		}
 
-		if *label.Name == IncrementTypeMajorLabel {
+		switch *label.Name {
+		case IncrementTypeMajorLabel:
 			hasMajor = true
-			continue
-		}
-
-		if *label.Name == IncrementTypeMinorLabel {
+		case IncrementTypeMinorLabel:
 			hasMinor = true
+		case IncrementTypePatchLabel:
+			hasPatch = true
+		default:
 			continue
 		}
 
