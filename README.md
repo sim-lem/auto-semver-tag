@@ -1,6 +1,6 @@
 # Auto semver tag
 
-Action creates semver tag *(vX.Y.Z)* when pull request is merged. New version is calculated based on presence of PR labels: "major", "minor". Otherwise patch version is incremented.
+Action creates semver tag *(vX.Y.Z)* when pull request is merged. New version is calculated based on presence of PR labels: "major", "minor", "patch". Otherwise version will not be incremented.
 
 ## Enviroment
 
