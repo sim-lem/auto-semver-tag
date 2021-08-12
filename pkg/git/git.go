@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -82,7 +83,8 @@ func (gitClient *GitClient) PerformAction(commitSha string, eventDataFilePath st
 	}
 
 	if *event.PullRequest.Base.Ref != gitClient.repo.releaseBranch {
-		return errors.New("pull request is merged not into the release branch")
+		log.Print("pull request is merged not into the release branch")
+		return nil
 	}
 
 	hasMajor, hasMinor, hasPatch := parsePullRequestLabels(event.PullRequest)
