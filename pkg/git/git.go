@@ -216,7 +216,7 @@ func getLatestTag(client *github.Client, owner string, repo string) (semver.SemV
 		}
 	}
 
-	fmt.Printf("Found previous version tag: %s", res)
+	log.Printf("Found previous version tag: %s", res)
 
 	return res, nil
 }
