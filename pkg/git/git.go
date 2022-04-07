@@ -21,6 +21,7 @@ type Repository struct {
 	owner         string
 	releaseBranch string
 	version       semver.SemVer
+	versionHash   string
 }
 
 type GithubClient struct {
@@ -39,7 +40,7 @@ func New(token string, repository string, releaseBranch string) (*GithubClient, 
 	owner := parts[0]
 	repoName := parts[1]
 
-	version, err := getLatestTag(client, owner, repoName)
+	version, commit, err := getLatestTag(client, owner, repoName)
 	if err != nil {
 		return nil, err
 	}
@@ -49,6 +50,7 @@ func New(token string, repository string, releaseBranch string) (*GithubClient, 
 		owner,
 		releaseBranch,
 		version,
+		commit,
 	}
 
 	return &GithubClient{
@@ -86,10 +88,13 @@ func (g *GithubClient) PerformAction(commitSha string, eventDataFilePath string)
 		baseRef = *pr.Base.Ref
 	}
 
+	mergeCommit := pr.GetMergeCommitSHA()
+
 	log.Printf("Event pull request:")
 	log.Printf("  Action:   %s", action)
 	log.Printf("  IsMerged: %v", isMerged)
 	log.Printf("  Base Ref: %s", baseRef)
+	log.Printf("  Merge:    %s", mergeCommit)
 
 	if action != "closed" {
 		return fmt.Errorf("pull request is not closed: %s", action)
@@ -102,6 +107,11 @@ func (g *GithubClient) PerformAction(commitSha string, eventDataFilePath string)
 	if baseRef != g.repo.releaseBranch {
 		return fmt.Errorf("pull request merged into a different branch (expected: %s, actual: %s)",
 			g.repo.releaseBranch, baseRef)
+	}
+
+	if mergeCommit == g.repo.versionHash {
+		log.Printf("Detected this commit has already been tagged with the latest version. No new tag necessary.")
+		return nil
 	}
 
 	log.Printf("Extracting SemVer labels from pull request...")
@@ -183,8 +193,9 @@ func parseEventDataFile(filePath string) (*github.PullRequestEvent, error) {
 	return res, nil
 }
 
-func getLatestTag(client *github.Client, owner string, repo string) (semver.SemVer, error) {
+func getLatestTag(client *github.Client, owner string, repo string) (semver.SemVer, string, error) {
 	res := semver.SemVer{}
+	commit := ""
 	ctx := context.Background()
 
 	refs, response, err := client.Git.ListMatchingRefs(ctx, owner, repo, &github.ReferenceListOptions{
@@ -193,15 +204,15 @@ func getLatestTag(client *github.Client, owner string, repo string) (semver.SemV
 
 	if response != nil && response.StatusCode == http.StatusNotFound {
 		// StatusNotFound would also cause `err != nil`, but it is not an error in this context.
-		return res, nil
+		return res, commit, nil
 	}
 
 	if err != nil {
 		if response != nil {
-			return res, fmt.Errorf("ListMatchingRefs failed with status: %d %s. %w",
+			return res, commit, fmt.Errorf("ListMatchingRefs failed with status: %d %s. %w",
 				response.StatusCode, response.Status, err)
 		}
-		return res, err
+		return res, commit, err
 	}
 
 	for _, ref := range refs {
@@ -212,13 +223,18 @@ func getLatestTag(client *github.Client, owner string, repo string) (semver.SemV
 		}
 
 		if version.IsGreaterThan(res) {
+			if ref.Object == nil || ref.Object.SHA == nil {
+				return res, commit, fmt.Errorf("unable to extract hash from tag: %s", version)
+			}
+
 			res = version
+			commit = *ref.Object.SHA
 		}
 	}
 
-	log.Printf("Found previous version tag: %s", res)
+	log.Printf("Found previous version tag: %s (commit: %s)", res, commit)
 
-	return res, nil
+	return res, commit, nil
 }
 
 func stripOrg(byteString []byte) []byte {
