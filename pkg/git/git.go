@@ -95,6 +95,7 @@ func (g *GithubClient) PerformAction(commitSha string, eventDataFilePath string)
 	log.Printf("  IsMerged: %v", isMerged)
 	log.Printf("  Base Ref: %s", baseRef)
 	log.Printf("  Merge:    %s", mergeCommit)
+	log.Printf("  Commit:   %s", commitSha)
 
 	if action != "closed" {
 		return fmt.Errorf("pull request is not closed: %s", action)
@@ -138,16 +139,20 @@ func (g *GithubClient) PerformAction(commitSha string, eventDataFilePath string)
 
 func (g *GithubClient) createTag(version string, commitSha string) error {
 	ctx := context.Background()
+	refValue := fmt.Sprintf("refs/tags/%s", version)
 	ref := &github.Reference{
-		Ref: github.String(fmt.Sprintf("refs/tags/%s", version)),
+		Ref: github.String(refValue),
 		Object: &github.GitObject{
 			SHA: &commitSha,
 		},
 	}
 
 	_, _, err := g.client.Git.CreateRef(ctx, g.repo.owner, g.repo.name, ref)
+	if err != nil {
+		return fmt.Errorf("failed to create new ref: %s", refValue)
+	}
 
-	return err
+	return nil
 }
 
 func parsePullRequestLabels(pr *github.PullRequest) semver.IncrementType {
@@ -203,7 +208,7 @@ func getLatestTag(client *github.Client, owner string, repo string) (semver.SemV
 	})
 
 	if response != nil && response.StatusCode == http.StatusNotFound {
-		// StatusNotFound would also cause `err != nil`, but it is not an error in this context.
+		log.Printf("Warning: Received a 404 Not Found when attempting to list tags")
 		return res, commit, nil
 	}
 
