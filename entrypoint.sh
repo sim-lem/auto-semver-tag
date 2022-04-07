@@ -1,8 +1,8 @@
 #!/bin/sh -l
 
-if [ -z "${GITHUB_TOKEN}" ]
+if [ -z "${GITHUB_PAT}" ]
 then
-    echo "The GITHUB_TOKEN environment variable is not defined."
+    echo "The GITHUB_PAT environment variable is not defined."
     exit 1
 fi
 
