@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
-	"net/http"
 	"os"
 	"strings"
 
@@ -91,11 +90,11 @@ func (g *GithubClient) PerformAction(commitSha string, eventDataFilePath string)
 	mergeCommit := pr.GetMergeCommitSHA()
 
 	log.Printf("Event pull request:")
-	log.Printf("  Action:   %s", action)
-	log.Printf("  IsMerged: %v", isMerged)
-	log.Printf("  Base Ref: %s", baseRef)
-	log.Printf("  Merge:    %s", mergeCommit)
-	log.Printf("  Commit:   %s", commitSha)
+	log.Printf("  Action:          %s", action)
+	log.Printf("  IsMerged:        %v", isMerged)
+	log.Printf("  Base Ref:        %s", baseRef)
+	log.Printf("  Merge Commit:    %s", mergeCommit)
+	log.Printf("  Workflow Commit: %s", commitSha)
 
 	if action != "closed" {
 		return fmt.Errorf("pull request is not closed: %s", action)
@@ -110,8 +109,13 @@ func (g *GithubClient) PerformAction(commitSha string, eventDataFilePath string)
 			g.repo.releaseBranch, baseRef)
 	}
 
+	if mergeCommit == commitSha {
+		return fmt.Errorf("workflow run arguments and pull request data mismatch")
+	}
+
 	if mergeCommit == g.repo.versionHash {
 		log.Printf("Detected this commit has already been tagged with the latest version. No new tag necessary.")
+
 		return nil
 	}
 
@@ -120,6 +124,7 @@ func (g *GithubClient) PerformAction(commitSha string, eventDataFilePath string)
 	incrementType := parsePullRequestLabels(pr)
 	if incrementType == semver.IncrementTypeUnknown {
 		log.Printf(`No SemVer labels found. Commit will still be using %s`, g.repo.version)
+
 		return nil
 	}
 
@@ -207,18 +212,10 @@ func getLatestTag(client *github.Client, owner string, repo string) (semver.SemV
 		Ref: "tags",
 	})
 
-	if response != nil && response.StatusCode == http.StatusNotFound {
-		log.Printf("Warning: Received a 404 Not Found when attempting to list tags: %v", err)
-
-		return res, commit, nil
-	}
-
+	scopes := response.Header.Get("X-OAuth-Scopes")
+	log.Printf("GitHub client authorized for scopes: %s", scopes)
+	
 	if err != nil {
-		if response != nil {
-			return res, commit, fmt.Errorf("ListMatchingRefs failed with status: %d %s. %w",
-				response.StatusCode, response.Status, err)
-		}
-
 		return res, commit, err
 	}
 
