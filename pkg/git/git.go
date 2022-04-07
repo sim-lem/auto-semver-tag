@@ -208,6 +208,21 @@ func getLatestTag(client *github.Client, owner string, repo string) (semver.SemV
 	commit := ""
 	ctx := context.Background()
 
+	log.Printf("Checking access to repositories:")
+	repos, _, _ := client.Repositories.List(ctx, owner, &github.RepositoryListOptions{
+		Visibility:  "",
+		Affiliation: "owner",
+		Type:        "",
+		Sort:        "",
+		Direction:   "",
+		ListOptions: github.ListOptions{},
+	})
+
+	for _, r := range repos {
+		log.Printf("  - %s", r.GetFullName())
+	}
+	log.Printf("--eol")
+
 	refs, response, err := client.Git.ListMatchingRefs(ctx, owner, repo, &github.ReferenceListOptions{
 		Ref: "tags",
 	})
@@ -219,21 +234,6 @@ func getLatestTag(client *github.Client, owner string, repo string) (semver.SemV
 		log.Printf("Header: %-32s %v", k, v)
 	}
 	if err != nil {
-
-		log.Printf("Checking access to repositories:")
-		repos, _, _ := client.Repositories.List(ctx, owner, &github.RepositoryListOptions{
-			Visibility:  "",
-			Affiliation: "owner",
-			Type:        "",
-			Sort:        "",
-			Direction:   "",
-			ListOptions: github.ListOptions{},
-		})
-
-		for _, r := range repos {
-			log.Printf("  - %s", r.GetFullName())
-		}
-		log.Printf("--eol")
 
 		return res, commit, err
 	}
