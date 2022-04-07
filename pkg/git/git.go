@@ -221,12 +221,17 @@ func getLatestTag(client *github.Client, owner string, repo string) (semver.SemV
 	if err != nil {
 
 		log.Printf("Checking access to repositories:")
-		repos, _, _ := client.Repositories.ListAll(ctx, &github.RepositoryListAllOptions{
-			Since: 0,
+		repos, _, _ := client.Repositories.List(ctx, owner, &github.RepositoryListOptions{
+			Visibility:  "",
+			Affiliation: "owner",
+			Type:        "",
+			Sort:        "",
+			Direction:   "",
+			ListOptions: github.ListOptions{},
 		})
 
 		for _, r := range repos {
-			log.Printf("  - %s", *r)
+			log.Printf("  - %s", r.GetFullName())
 		}
 		log.Printf("--eol")
 
