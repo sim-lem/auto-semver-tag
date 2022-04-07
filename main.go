@@ -35,9 +35,9 @@ func executeCommand(cmd *cobra.Command, args []string) {
 	commitSha := args[2]
 	githubEventFilePath := args[3]
 
-	token, isExists := os.LookupEnv("GITHUB_TOKEN")
+	pat, isExists := os.LookupEnv("GITHUB_PAT")
 	if !isExists {
-		log.Fatal("GITHUB_TOKEN env var does not exist")
+		log.Fatal("GITHUB_PAT env var does not exist")
 	}
 
 	log.Printf("Workflow action arguments:")
@@ -45,9 +45,9 @@ func executeCommand(cmd *cobra.Command, args []string) {
 	log.Printf("  ReleaseBranch:       %s", releaseBranch)
 	log.Printf("  CommitSha:           %s", commitSha)
 	log.Printf("  GithubEventFilePath: %s", githubEventFilePath)
-	log.Printf("  GITHUB_TOKEN:        ***[length = %d]***", len(token))
+	log.Printf("  GITHUB_PAT:          ***[length = %d]***", len(pat))
 
-	client, err := git.New(token, repository, releaseBranch)
+	client, err := git.New(pat, repository, releaseBranch)
 	if err != nil {
 		log.Fatalf("ERROR: %v", err)
 	}
