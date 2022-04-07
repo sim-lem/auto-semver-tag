@@ -40,7 +40,12 @@ func executeCommand(cmd *cobra.Command, args []string) {
 		log.Fatal("GITHUB_TOKEN env var does not exist")
 	}
 
-	log.Printf("Using GITHUB_TOKEN: ***[length = %d]***", len(token))
+	log.Printf("Workflow action arguments:")
+	log.Printf("  Repository:          %s", repository)
+	log.Printf("  ReleaseBranch:       %s", releaseBranch)
+	log.Printf("  CommitSha:           %s", commitSha)
+	log.Printf("  GithubEventFilePath: %s", githubEventFilePath)
+	log.Printf("  GITHUB_TOKEN:        ***[length = %d]***", len(token))
 
 	client, err := git.New(token, repository, releaseBranch)
 	if err != nil {
