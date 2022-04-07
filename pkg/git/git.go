@@ -149,7 +149,7 @@ func (g *GithubClient) createTag(version string, commitSha string) error {
 
 	_, _, err := g.client.Git.CreateRef(ctx, g.repo.owner, g.repo.name, ref)
 	if err != nil {
-		return fmt.Errorf("failed to create new ref: %s", refValue)
+		return fmt.Errorf("failed to create new ref (%s): %v", refValue, err)
 	}
 
 	return nil
@@ -208,7 +208,8 @@ func getLatestTag(client *github.Client, owner string, repo string) (semver.SemV
 	})
 
 	if response != nil && response.StatusCode == http.StatusNotFound {
-		log.Printf("Warning: Received a 404 Not Found when attempting to list tags")
+		log.Printf("Warning: Received a 404 Not Found when attempting to list tags: %v", err)
+
 		return res, commit, nil
 	}
 
@@ -217,6 +218,7 @@ func getLatestTag(client *github.Client, owner string, repo string) (semver.SemV
 			return res, commit, fmt.Errorf("ListMatchingRefs failed with status: %d %s. %w",
 				response.StatusCode, response.Status, err)
 		}
+
 		return res, commit, err
 	}
 
@@ -224,6 +226,7 @@ func getLatestTag(client *github.Client, owner string, repo string) (semver.SemV
 		version, err := semver.New(strings.Replace(*ref.Ref, "refs/tags/", "", 1))
 		if err != nil {
 			log.Printf("Ignoring tag: %s", *ref.Ref)
+
 			continue
 		}
 

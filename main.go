@@ -44,11 +44,11 @@ func executeCommand(cmd *cobra.Command, args []string) {
 
 	client, err := git.New(token, repository, releaseBranch)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("ERROR: %v", err)
 	}
 
 	err = client.PerformAction(commitSha, githubEventFilePath)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("ERROR: %v", err)
 	}
 }
