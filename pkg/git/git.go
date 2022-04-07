@@ -109,7 +109,7 @@ func (g *GithubClient) PerformAction(commitSha string, eventDataFilePath string)
 			g.repo.releaseBranch, baseRef)
 	}
 
-	if mergeCommit == commitSha {
+	if mergeCommit != commitSha {
 		return fmt.Errorf("workflow run arguments and pull request data mismatch")
 	}
 
@@ -214,7 +214,11 @@ func getLatestTag(client *github.Client, owner string, repo string) (semver.SemV
 
 	scopes := response.Header.Get("X-OAuth-Scopes")
 	log.Printf("GitHub client authorized for scopes: %s", scopes)
-	
+
+	for k, v := range response.Header {
+		log.Printf("Header: %-32s %v", k, v)
+	}
+
 	if err != nil {
 		return res, commit, err
 	}
