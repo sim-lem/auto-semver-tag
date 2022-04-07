@@ -33,7 +33,7 @@ type GithubClient struct {
 func New(token string, repository string, releaseBranch string) (*GithubClient, error) {
 	ctx := context.Background()
 
-	tokenSource := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token})
+	tokenSource := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token, TokenType: "token"})
 	client := github.NewClient(oauth2.NewClient(ctx, tokenSource))
 
 	parts := strings.Split(repository, "/")
