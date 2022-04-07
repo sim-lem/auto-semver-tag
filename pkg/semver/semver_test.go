@@ -44,6 +44,12 @@ func TestSemverParsing(t *testing.T) {
 			expectedRes:   SemVer{1, 0, 1},
 			expectedError: nil,
 		},
+		{
+			name:          "Valid version with multi-digits: v12.34.56",
+			strToParse:    "v12.34.56",
+			expectedRes:   SemVer{12, 34, 56},
+			expectedError: nil,
+		},
 	}
 
 	for _, test := range tests {
@@ -65,36 +71,84 @@ func TestSemverParsing(t *testing.T) {
 }
 
 func TestSemverIncrement(t *testing.T) {
-	var tests = []struct {
-		name          string
-		semver        SemVer
-		expectedRes   SemVer
-		incrementType string
+	v567 := SemVer{5, 6, 7}
+
+	tests := []struct {
+		before    SemVer
+		after     SemVer
+		increment IncrementType
 	}{
 		{
-			name:          "Increment major",
-			semver:        SemVer{1, 0, 0},
-			expectedRes:   SemVer{2, 0, 0},
-			incrementType: IncrementTypeMajor,
+			before:    SemVer{},
+			after:     SemVer{1, 0, 0},
+			increment: IncrementTypeMajor,
 		},
 		{
-			name:          "Increment minor",
-			semver:        SemVer{1, 0, 0},
-			expectedRes:   SemVer{1, 1, 0},
-			incrementType: IncrementTypeMinor,
+			before:    SemVer{},
+			after:     SemVer{0, 1, 0},
+			increment: IncrementTypeMinor,
 		},
 		{
-			name:          "Increment patch",
-			semver:        SemVer{1, 0, 0},
-			expectedRes:   SemVer{1, 0, 1},
-			incrementType: IncrementTypePatch,
+			before:    SemVer{},
+			after:     SemVer{0, 0, 1},
+			increment: IncrementTypePatch,
+		},
+
+		{
+			before:    v567,
+			after:     SemVer{6, 0, 0},
+			increment: IncrementTypeMajor,
+		},
+		{
+			before:    v567,
+			after:     SemVer{5, 7, 0},
+			increment: IncrementTypeMinor,
+		},
+		{
+			before:    v567,
+			after:     SemVer{5, 6, 8},
+			increment: IncrementTypePatch,
 		},
 	}
 
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			res := test.semver.IncrementVersion(test.incrementType)
-			assert.Equal(t, test.expectedRes.String(), res.String())
+	for _, tt := range tests {
+		name := fmt.Sprintf("Increment %s from %s to %s", tt.increment, tt.before, tt.after)
+		t.Run(name, func(t *testing.T) {
+			res := tt.before.IncrementVersion(tt.increment)
+			assert.Equal(t, tt.after.String(), res.String())
+		})
+	}
+}
+
+func TestStringToIncrementType(t *testing.T) {
+	tests := []struct {
+		val  string
+		want IncrementType
+	}{
+		{
+			val:  "major",
+			want: IncrementTypeMajor,
+		},
+		{
+			val:  "minor",
+			want: IncrementTypeMinor,
+		},
+		{
+			val:  "patch",
+			want: IncrementTypePatch,
+		},
+		{
+			val:  "Major",
+			want: IncrementTypeUnknown,
+		},
+		{
+			val:  "something else",
+			want: IncrementTypeUnknown,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("%s is %s", tt.val, tt.want), func(t *testing.T) {
+			assert.Equal(t, tt.want, StringToIncrementType(tt.val))
 		})
 	}
 }

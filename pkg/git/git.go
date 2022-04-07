@@ -16,26 +16,20 @@ import (
 	"golang.org/x/oauth2"
 )
 
-const (
-	IncrementTypeMajorLabel = "major"
-	IncrementTypeMinorLabel = "minor"
-	IncrementTypePatchLabel = "patch"
-)
-
-type GitRepository struct {
+type Repository struct {
 	name          string
 	owner         string
 	releaseBranch string
 	version       semver.SemVer
 }
 
-type GitClient struct {
+type GithubClient struct {
 	token  string
-	repo   GitRepository
+	repo   Repository
 	client *github.Client
 }
 
-func New(token string, repository string, releaseBranch string) (*GitClient, error) {
+func New(token string, repository string, releaseBranch string) (*GithubClient, error) {
 	ctx := context.Background()
 
 	tokenSource := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token})
@@ -50,61 +44,81 @@ func New(token string, repository string, releaseBranch string) (*GitClient, err
 		return nil, err
 	}
 
-	repo := GitRepository{
+	repo := Repository{
 		repoName,
 		owner,
 		releaseBranch,
 		version,
 	}
 
-	return &GitClient{
+	return &GithubClient{
 		token,
 		repo,
 		client,
 	}, nil
 }
 
-func (gitClient *GitClient) PerformAction(commitSha string, eventDataFilePath string) error {
+func (g *GithubClient) PerformAction(commitSha string, eventDataFilePath string) error {
+	log.Printf("Extracting event data")
+
 	event, err := parseEventDataFile(eventDataFilePath)
 	if err != nil {
 		return err
 	}
 
-	if event.Action == nil || *event.Action != "closed" {
-		return errors.New("pull request is not closed")
+	pr := event.PullRequest
+	if pr == nil {
+		return fmt.Errorf("pull request not found in data file: %v", event)
 	}
 
-	if event.PullRequest.Merged == nil || !*event.PullRequest.Merged {
-		return errors.New("pull request is not merged")
+	action := ""
+	if event.Action != nil {
+		action = *event.Action
 	}
 
-	if event.PullRequest.Base == nil || event.PullRequest.Base.Ref == nil {
-		return errors.New("could not determine pull request base branch")
+	isMerged := false
+	if pr.Merged != nil {
+		isMerged = *pr.Merged
 	}
 
-	if *event.PullRequest.Base.Ref != gitClient.repo.releaseBranch {
-		log.Print("pull request is merged not into the release branch")
+	baseRef := ""
+	if pr.Base != nil && pr.Base.Ref != nil {
+		baseRef = *pr.Base.Ref
+	}
+
+	log.Printf("Event pull request:")
+	log.Printf("  Action:   %s", action)
+	log.Printf("  IsMerged: %v", isMerged)
+	log.Printf("  Base Ref: %s", baseRef)
+
+	if action != "closed" {
+		return fmt.Errorf("pull request is not closed: %s", action)
+	}
+
+	if !isMerged {
+		return fmt.Errorf("pull request is not merged")
+	}
+
+	if baseRef != g.repo.releaseBranch {
+		return fmt.Errorf("pull request merged into a different branch (expected: %s, actual: %s)",
+			g.repo.releaseBranch, baseRef)
+	}
+
+	log.Printf("Extracting SemVer labels from pull request...")
+
+	incrementType := parsePullRequestLabels(pr)
+	if incrementType == semver.IncrementTypeUnknown {
+		log.Printf(`No SemVer labels found. Commit will still be using %s`, g.repo.version)
 		return nil
 	}
 
-	hasMajor, hasMinor, hasPatch := parsePullRequestLabels(event.PullRequest)
+	log.Printf(`Found "%s" label.`, incrementType)
 
-	var newVersion semver.SemVer
-	if hasMajor {
-		newVersion = gitClient.repo.version.IncrementVersion(semver.IncrementTypeMajor)
-	} else if hasMinor {
-		newVersion = gitClient.repo.version.IncrementVersion(semver.IncrementTypeMinor)
-	} else if hasPatch {
-		newVersion = gitClient.repo.version.IncrementVersion(semver.IncrementTypePatch)
-	} else {
-		return nil
-	}
+	newVersion := g.repo.version.IncrementVersion(incrementType)
 
-	if !newVersion.IsGreaterThan(semver.SemVer{}) {
-		return errors.New("new version is 0.0.0")
-	}
+	log.Printf("Incrementing to new version: %s", newVersion)
 
-	err = gitClient.createTag(newVersion.String(), commitSha)
+	err = g.createTag(newVersion.String(), commitSha)
 	if err != nil {
 		return err
 	}
@@ -112,7 +126,7 @@ func (gitClient *GitClient) PerformAction(commitSha string, eventDataFilePath st
 	return nil
 }
 
-func (gitClient *GitClient) createTag(version string, commitSha string) error {
+func (g *GithubClient) createTag(version string, commitSha string) error {
 	ctx := context.Background()
 	ref := &github.Reference{
 		Ref: github.String(fmt.Sprintf("refs/tags/%s", version)),
@@ -121,39 +135,35 @@ func (gitClient *GitClient) createTag(version string, commitSha string) error {
 		},
 	}
 
-	_, _, err := gitClient.client.Git.CreateRef(ctx, gitClient.repo.owner, gitClient.repo.name, ref)
+	_, _, err := g.client.Git.CreateRef(ctx, g.repo.owner, g.repo.name, ref)
 
 	return err
 }
 
-func parsePullRequestLabels(pr *github.PullRequest) (hasMajor bool, hasMinor bool, hasPatch bool) {
+func parsePullRequestLabels(pr *github.PullRequest) semver.IncrementType {
+	incType := semver.IncrementTypeUnknown
 	for _, label := range pr.Labels {
 		if label.Name == nil {
 			continue
 		}
 
-		switch *label.Name {
-		case IncrementTypeMajorLabel:
-			hasMajor = true
-		case IncrementTypeMinorLabel:
-			hasMinor = true
-		case IncrementTypePatchLabel:
-			hasPatch = true
-		default:
-			continue
-		}
+		t := semver.StringToIncrementType(*label.Name)
 
+		if t < incType {
+			incType = t
+		}
 	}
 
-	return
+	return incType
 }
 
 func parseEventDataFile(filePath string) (*github.PullRequestEvent, error) {
 	file, err := os.Open(filePath)
+	defer func() { _ = file.Close() }()
+
 	if err != nil {
 		return nil, fmt.Errorf("%s. Filepath: %s", err, filePath)
 	}
-	defer file.Close()
 
 	event, err := ioutil.ReadAll(file)
 	if err != nil {
@@ -180,17 +190,24 @@ func getLatestTag(client *github.Client, owner string, repo string) (semver.SemV
 	refs, response, err := client.Git.ListMatchingRefs(ctx, owner, repo, &github.ReferenceListOptions{
 		Ref: "tags",
 	})
-	if err != nil {
-		return res, err
-	}
 
 	if response != nil && response.StatusCode == http.StatusNotFound {
+		// StatusNotFound would also cause `err != nil`, but it is not an error in this context.
 		return res, nil
+	}
+
+	if err != nil {
+		if response != nil {
+			return res, fmt.Errorf("ListMatchingRefs failed with status: %d %s. %w",
+				response.StatusCode, response.Status, err)
+		}
+		return res, err
 	}
 
 	for _, ref := range refs {
 		version, err := semver.New(strings.Replace(*ref.Ref, "refs/tags/", "", 1))
 		if err != nil {
+			log.Printf("Ignoring tag: %s", *ref.Ref)
 			continue
 		}
 
@@ -198,6 +215,8 @@ func getLatestTag(client *github.Client, owner string, repo string) (semver.SemV
 			res = version
 		}
 	}
+
+	fmt.Printf("Found previous version tag: %s", res)
 
 	return res, nil
 }

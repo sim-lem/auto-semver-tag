@@ -7,6 +7,9 @@ import (
 	"strings"
 )
 
+// IncrementType allow alphanumeric comparison: major < minor < patch < unknown
+type IncrementType string
+
 const (
 	// https://ihateregex.io/expr/semver
 	SemVerRegExp = `^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)` +
@@ -14,10 +17,24 @@ const (
 		`(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?` +
 		`(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$`
 
-	IncrementTypeMajor = "major"
-	IncrementTypeMinor = "minor"
-	IncrementTypePatch = "patch"
+	IncrementTypeMajor   IncrementType = "major"
+	IncrementTypeMinor   IncrementType = "minor"
+	IncrementTypePatch   IncrementType = "patch"
+	IncrementTypeUnknown IncrementType = "unknown"
 )
+
+func StringToIncrementType(val string) IncrementType {
+	switch val {
+	case string(IncrementTypeMajor):
+		return IncrementTypeMajor
+	case string(IncrementTypeMinor):
+		return IncrementTypeMinor
+	case string(IncrementTypePatch):
+		return IncrementTypePatch
+	default:
+		return IncrementTypeUnknown
+	}
+}
 
 type SemVer struct {
 	major uint64
@@ -76,22 +93,30 @@ func New(semVer string) (SemVer, error) {
 	return res, err
 }
 
-func (s SemVer) IncrementVersion(incrementType string) SemVer {
+func (s SemVer) IncrementVersion(incrementType IncrementType) SemVer {
 	switch incrementType {
 	case IncrementTypeMajor:
-		s.major += 1
-		s.minor = 0
-		s.patch = 0
+		return SemVer{
+			major: s.major + 1,
+			minor: 0,
+			patch: 0,
+		}
+
 	case IncrementTypeMinor:
-		s.minor += 1
-		s.patch = 0
+		return SemVer{
+			major: s.major,
+			minor: s.minor + 1,
+			patch: 0,
+		}
 	case IncrementTypePatch:
-		s.patch += 1
+		return SemVer{
+			major: s.major,
+			minor: s.minor,
+			patch: s.patch + 1,
+		}
 	default:
 		panic("invalid increment type")
 	}
-
-	return s
 }
 
 func (s SemVer) String() string {
